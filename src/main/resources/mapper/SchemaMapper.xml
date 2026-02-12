@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.mapper.SchemaMapper">
+    <!-- 执行任意更新/建表 SQL -->
+    <update id="execUpdate">
+        ${sql}
+    </update>
+
+    <!-- 获取表的所有列名信息 -->
+    <select id="showColumns" resultType="map">
+        SHOW COLUMNS FROM ${tableName}
+    </select>
+
+    <!-- 为表动动态增加列 -->
+    <update id="addColumn">
+        ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${type} DEFAULT NULL
+    </update>
+</mapper>

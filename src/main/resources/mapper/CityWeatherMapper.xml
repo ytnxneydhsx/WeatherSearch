@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.mapper.CityWeatherMapper">
+    <!-- 城市天气联表映射字典 -->
+    <resultMap id="CityWeatherMap" type="BaseCity">
+        <!-- 1. 映射城市容器的信息 -->
+        <id column="city_id" property="cityId" />
+        <result column="city_name" property="cityName" />
+
+        <!-- 2. 映射内部天气预报列表 -->
+        <!-- property "forecastList" 对应 BaseCity 里的 setForecastList 方法 -->
+        <collection property="forecastList" ofType="Weather">
+            <id column="weather_id" property="id" />
+            <result column="fx_date" property="fxDate" />
+            <result column="temp_max" property="tempMax" />
+            <result column="temp_min" property="tempMin" />
+            <result column="text_day" property="textDay" />
+        </collection>
+    </resultMap>
+
+    <!-- 按城市名查询天气预报 -->
+    <select id="selectForecastByCityName" resultMap="CityWeatherMap">
+        SELECT
+            c.id as city_id, c.name as city_name,
+            w.id as weather_id, w.fx_date, w.temp_max, w.temp_min, w.text_day
+        FROM city c
+        LEFT JOIN weather_forecast w ON c.id = w.city_id AND w.fx_date >= CURDATE()
+        WHERE c.name = #{cityName}
+        ORDER BY w.fx_date ASC
+        LIMIT 3
+    </select>
+
+    <!-- 插入城市信息 (如果已存在则忽略) -->
+    <insert id="insertCity">
+        INSERT IGNORE INTO city (id, name)
+        VALUES (#{cityId}, #{cityName})
+    </insert>
+
+    <!-- 【终极全自动版】修正后：使用 index 获取 Key，item 获取 Value，规避 OGNL 异常 -->
+    <insert id="upsertWeather">
+        INSERT INTO weather_forecast (
+            city_id,
+            <foreach collection="data" index="key" separator=",">
+                `${key}`
+            </foreach>
+        ) VALUES (
+            #{cityId},
+            <foreach collection="data" item="value" separator=",">
+                #{value}
+            </foreach>
+        )
+        ON DUPLICATE KEY UPDATE
+        <foreach collection="data" index="key" item="value" separator=",">
+            `${key}` = #{value}
+        </foreach>
+    </insert>
+
+    <!-- 示例查询：根据城市ID查询未来三天的天气 -->
+    <select id="selectCityForecast" resultMap="CityWeatherMap">
+        SELECT
+            c.id as city_id, c.name as city_name,
+            w.id as weather_id, w.fx_date, w.temp_max, w.temp_min, w.text_day
+        FROM city c
+        LEFT JOIN weather_forecast w ON c.id = w.city_id 
+          AND w.fx_date IN (#{today}, #{tomorrow}, #{dayAfterTomorrow})
+        WHERE c.id = #{cityId}
+    </select>
+</mapper>
