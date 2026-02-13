@@ -3,15 +3,15 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="org.example.mapper.CityWeatherMapper">
-    <!-- 城市天气联表映射字典 -->
-    <resultMap id="CityWeatherMap" type="BaseCity">
+    <!-- 城市天气联表映射字典 (开启 autoMapping 实现新字段自动装配) -->
+    <resultMap id="CityWeatherMap" type="BaseCity" autoMapping="true">
         <!-- 1. 映射城市容器的信息 -->
         <id column="city_id" property="cityId" />
         <result column="city_name" property="cityName" />
 
         <!-- 2. 映射内部天气预报列表 -->
         <!-- property "forecastList" 对应 BaseCity 里的 setForecastList 方法 -->
-        <collection property="forecastList" ofType="Weather">
+        <collection property="forecastList" ofType="Weather" autoMapping="true">
             <id column="weather_id" property="id" />
             <result column="fx_date" property="fxDate" />
             <result column="temp_max" property="tempMax" />
@@ -24,7 +24,7 @@
     <select id="selectForecastByCityName" resultMap="CityWeatherMap">
         SELECT
             c.id as city_id, c.name as city_name,
-            w.id as weather_id, w.fx_date, w.temp_max, w.temp_min, w.text_day
+            w.*, w.id as weather_id
         FROM city c
         LEFT JOIN weather_forecast w ON c.id = w.city_id AND w.fx_date >= CURDATE()
         WHERE c.name = #{cityName}
@@ -57,14 +57,19 @@
         </foreach>
     </insert>
 
-    <!-- 示例查询：根据城市ID查询未来三天的天气 -->
-    <select id="selectCityForecast" resultMap="CityWeatherMap">
+
+    <select id="listCityForecast" resultMap="CityWeatherMap">
         SELECT
             c.id as city_id, c.name as city_name,
-            w.id as weather_id, w.fx_date, w.temp_max, w.temp_min, w.text_day
-        FROM city c
-        LEFT JOIN weather_forecast w ON c.id = w.city_id 
-          AND w.fx_date IN (#{today}, #{tomorrow}, #{dayAfterTomorrow})
-        WHERE c.id = #{cityId}
+            w.*, w.id as weather_id
+        FROM (
+            SELECT id, name FROM city ORDER BY id ASC LIMIT #{offset}, #{limit}
+        ) c
+        LEFT JOIN (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY city_id ORDER BY fx_date ASC) as rn
+            FROM weather_forecast
+            WHERE fx_date >= CURDATE()
+        ) w ON c.id = w.city_id AND w.rn &lt;= 3
+        ORDER BY c.id ASC, w.fx_date ASC
     </select>
 </mapper>

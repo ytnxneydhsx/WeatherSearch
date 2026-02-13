@@ -4,6 +4,8 @@ import org.apache.ibatis.annotations.Param;
 import org.example.entity.BaseCity;
 import org.example.entity.Weather;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 城市与天气数据联动的持久层接口
@@ -16,7 +18,8 @@ public interface CityWeatherMapper {
      */
     BaseCity selectForecastByCityName(@Param("cityName") String cityName);
 
-
+    List<BaseCity> listCityForecast(@Param("offset") int offset,
+                                    @Param("limit") int limit);
 
     /**
      * 插入城市基本信息 (用于系统启动时的自动注册同步)

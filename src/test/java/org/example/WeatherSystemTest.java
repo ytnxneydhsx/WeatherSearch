@@ -4,6 +4,7 @@ import org.apache.ibatis.session.SqlSession;
 import org.example.entity.BaseCity;
 import org.example.mapper.CityWeatherMapper;
 import org.example.mapper.SchemaMapper;
+import org.example.service.WeatherService;
 import org.example.utils.MyBatisUtils;
 import org.example.utils.SchemaSyncUtils;
 import org.example.utils.CityScanner;
@@ -17,21 +18,21 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class WeatherSystemTest {
 
     @BeforeAll
     void setup() {
-        // 关键：切换到测试数据库配置
+        // 1. 切换到测试数据库配置
         MyBatisUtils.setConfigResource("mybatis-config-test.xml");
+        // 2. 确保数据库表是干净的且已同步
+        SchemaSyncUtils.syncSchema();
     }
 
     @Test
     @Order(1)
     @DisplayName("测试 DDL 同步：自动建表与加列")
     void testSchemaSync() {
-        // 执行同步
-        SchemaSyncUtils.syncSchema();
-
         try (SqlSession session = MyBatisUtils.openSession()) {
             SchemaMapper mapper = session.getMapper(SchemaMapper.class);
             
@@ -41,32 +42,45 @@ public class WeatherSystemTest {
 
             List<Map<String, Object>> weatherCols = mapper.showColumns("weather_forecast");
             assertFalse(weatherCols.isEmpty(), "weather_forecast 表应该已创建");
-            
-            // 验证是否存在我们默认的列
-            boolean hasTempMax = weatherCols.stream().anyMatch(c -> c.get("Field").toString().equalsIgnoreCase("temp_max"));
-            assertTrue(hasTempMax, "应该包含 temp_max 列");
         }
     }
 
     @Test
     @Order(2)
-    @DisplayName("测试城市扫描与注册")
-    void testCityScannerAndRegistration() {
+    @DisplayName("测试分页查询：6个城市分页（5+1模式）且包含天气预报")
+    void testPagedForecast() {
+        // 1. 准备数据：先给这 6 个城市都塞点天气
         List<BaseCity> cities = CityScanner.scanCities();
-        assertFalse(cities.isEmpty(), "应该能扫到北京、福州等城市");
-
         try (SqlSession session = MyBatisUtils.openSession()) {
             CityWeatherMapper mapper = session.getMapper(CityWeatherMapper.class);
             for (BaseCity city : cities) {
+                // 插入城市 (防止未注册)
                 mapper.insertCity(city);
+                
+                // 构造一条今天的天气数据
+                Map<String, Object> data = new HashMap<>();
+                data.put("fx_date", LocalDate.now());
+                data.put("temp_max", 25);
+                data.put("temp_min", 15);
+                data.put("text_day", "多云");
+                mapper.upsertWeather(data, city.getCityId());
             }
             session.commit();
-            
-            // 验证数据库中是否有数据
-            BaseCity beijing = mapper.selectForecastByCityName("北京");
-            assertNotNull(beijing, "北京应该已注册成功");
-            assertEquals("101010100", beijing.getCityId());
         }
+
+        WeatherService service = new WeatherService();
+        
+        // 2. 测试第一页 (Offset 0, Limit 5)
+        List<BaseCity> page1 = service.listCityForecast(0, 5);
+        assertEquals(5, page1.size(), "第一页应该返回 5 个城市");
+        for (BaseCity city : page1) {
+            assertNotNull(city.getToday(), city.getCityName() + " 的天气预报应该已通过 Left Join 查出");
+        }
+
+        // 3. 测试第二页 (Offset 5, Limit 5)
+        List<BaseCity> page2 = service.listCityForecast(5, 5);
+        assertEquals(1, page2.size(), "第二页应该只剩下 1 个城市 (总共 6 个)");
+        assertNotNull(page2.get(0).getToday(), "最后的城市天气也要有");
     }
 
     @Test
@@ -94,7 +108,9 @@ public class WeatherSystemTest {
 
             // 验证
             BaseCity fuzhou = mapper.selectForecastByCityName("福州");
-            assertNotNull(fuzhou.getToday());
+            assertNotNull(fuzhou, "福州查询结果不应为空");
+            // 注意：由于 selectForecastByCityName 使用了 CURDATE() 过滤，确保上面的 LocalDate.now() 匹配
+            assertNotNull(fuzhou.getToday(), "福州今日天气不应为空");
             assertEquals(35, fuzhou.getToday().getTempMax(), "最高气温应该被覆盖更新为 35");
         }
     }

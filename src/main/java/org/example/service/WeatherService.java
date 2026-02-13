@@ -111,8 +111,15 @@ public class WeatherService {
     }
 
     /**
-     * 对外提供的查询接口
+     * 对外提供的查询接口：分页获取城市及其预报
      */
+    public List<BaseCity> listCityForecast(int offset, int limit) {
+        try (SqlSession session = MyBatisUtils.openSession()) {
+            CityWeatherMapper mapper = session.getMapper(CityWeatherMapper.class);
+            return mapper.listCityForecast(offset, limit);
+        }
+    }
+
     public BaseCity queryByCityName(String cityName) {
         try (SqlSession session = MyBatisUtils.openSession()) {
             CityWeatherMapper mapper = session.getMapper(CityWeatherMapper.class);
